@@ -8,7 +8,7 @@ boiler using serial modbus
 
  * /dev/ttyUSB0
  * FTDI USB to RS484 adapter
- * pymodbus python library
+ * minimalmodbus python library
 
 """
 
@@ -17,8 +17,7 @@ import diamond.convertor
 import time
 import os
 import re
-
-from pymodbus.client.sync import ModbusSerialClient
+import minimalmodbus
 
 try:
     import psutil
@@ -38,6 +37,7 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
             'stopbits': 'number of stop bit of the serial communcation',
             'parity': 'parity of the serial communcation even/odd/none',
             'slaveaddr': 'modbus address of the boiler',
+            'timeout': 'modbus read/write timeout',
         })
         return config_help
 
@@ -55,34 +55,23 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
             'parity':       'none',
             'method':       'rtu',
             'slaveaddr':    '0xA',
+            'timeout':      '1',
         })
         return config
 
-    def get_value(self,address,tryout=5):
-	client = ModbusSerialClient(method=str(self.config['method']),port=str(self.config['port']),baudrate=int(self.config['baudrate']),bytesize=int(self.config['bytesize']),stopbits=int(self.config['stopbits']),parity=self.parity)
-	client.connect()
+    def get_value(self,instrument,address,numberOfDecimals=0,signed=False,functioncode=3,tryout=40):
 
-	# L'interface modbus des chaudieres DeDietrich est un peu speciale
-	# car elle fonctionne en bi-maitre. Pendant 5 secondes, elle est
-        # maitre et emet des donnees sur le bus modbus, puis elle est escalve
-        # pendant 5 secondes, duree pendant laquelle on peut faire nos
-	# requetes
-	result = None
-	while result is None and tryout != 0:
-		self.log.error("Boiler / Essai %d"%tryout)
-		tryout = tryout-1
-		result = client.read_input_registers(address=address, count=1, unit=int(self.config['slaveaddr'],0))
-		if result is None and tryout != 0:
-			time.sleep(1)
+	while tryout != 0:
+		try:
+			value = instrument.read_register(address,numberOfDecimals,functioncode,signed)
+		except (IOError, ValueError, TypeError):
+			tryout=tryout-1
+		else:
+			self.log.debug("Boiler / Address %d value : %0.2f" % (address,value) )
+			return value
 
-	if tryout != 0:
-		value=result.registers[0]
-		self.log.error("Boiler / Address %d value : %d" % (address,value) )
-		return value
-	else:
-		self.log.error("Boiler / Unable to get value")
-		return None
-    
+	self.log.error("Boiler / Unable to get value %d" % address)
+	return None
 
     def collect(self):
         """
@@ -101,73 +90,78 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 	else:
 		self.parity='pas bon'
 
+	instrument = minimalmodbus.Instrument(str(self.config['port']),int(self.config['slaveaddr'],0),mode=str(self.config['method']))
+
+	instrument.serial.baudrate = int(self.config['baudrate'])
+	instrument.serial.bytesize = int(self.config['bytesize'])
+	instrument.serial.parity = self.parity
+	instrument.serial.stopbits = int(self.config['stopbits'])
+	instrument.serial.timeout = float(self.config['timeout'])
+
+	minimalmodbus.CLOSE_PORT_AFTER_EACH_CALL=True
+
 	##########
 	# 7 => outdoor sensor / -500 => 1500 / Increment 1 / Units 0.1 deg C
-	outdoor_sensor = self.get_value(7)
+	outdoor_sensor = self.get_value(instrument,7,1,True)
 	if outdoor_sensor is not None:	
-		# Verifie si le bit le plus haut est mis => valeur negative
-		if(outdoor_sensor & int('1000000000000000',2) == 32768):
-			value=(outdoor_sensor & int('0111111111111111',2))/-10.0
-		else:
-			value=outdoor_sensor/10.0
-		self.publish('outdoor_sensor',value, precision=1)
+#		# Verifie si le bit le plus haut est mis => valeur negative
+#		if(int(outdoor_sensor) & int('1000000000000000',2) == 32768):
+#			value=(int(outdoor_sensor) & int('0111111111111111',2))/-10.0
+#		else:
+#			value=outdoor_sensor/10.0
+		self.publish('outdoor_sensor',outdoor_sensor, precision=1)
 
 	##########
 	# 18 => room temperature circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
-	room_temp_a = self.get_value(18)
+	room_temp_a = self.get_value(instrument,18,1,False)
 	if room_temp_a is not None:	
-		self.publish('room_temp_a',room_temp_a/10.0, precision=1)
+		self.publish('room_temp_a',room_temp_a, precision=1)
 
 	##########
 	# 21 => calculated setpoint circuit A / N/A/ / Increment 1 / Units 0.1 deg C
-	calc_setpoint_a = self.get_value(21)
+	calc_setpoint_a = self.get_value(instrument,21,1,False)
 	if calc_setpoint_a is not None:	
-		self.publish('calc_setpoint_a',calc_setpoint_a/10.0, precision=1)
+		self.publish('calc_setpoint_a',calc_setpoint_a, precision=1)
 
 	##########
 	# 62 => dwh temperature / 0 => 1500 / Increment 1 / Units 0.1 deg C
-	dhw_temp = self.get_value(62)
+	dhw_temp = self.get_value(instrument,62,1,False)
 	if dhw_temp is not None:	
-		self.publish('dhw_temp',dhw_temp/10.0, precision=1)
+		self.publish('dhw_temp',dhw_temp, precision=1)
 
 	##########
         # 74 => boiler calculated setpoint / N/A / Increment 1 / 0.1 deg C
-        boiler_calc_setpoint = self.get_value(74)
+        boiler_calc_setpoint = self.get_value(instrument,74,1,False)
 	if boiler_calc_setpoint is not None:	
-		self.publish('boiler_calc_setpoint',boiler_return_temp/10.0, precision=1)
+		self.publish('boiler_calc_setpoint',boiler_calc_setpoint, precision=1)
 
 	##########
         # 75 => boiler mit flue temperature / -100 => 1500 / Increment 1 / 0.1 deg C
-        boiler_temp = self.get_value(75)
-	# Verifie si le bit le plus haut est mis => valeur negative
-	if(boiler_temp & int('1000000000000000',2) == 32768):
-		value=(boiler_temp & int('0111111111111111',2))/-10.0
-	else:
-		value=boiler_temp/10.0
-	self.publish('boiler_temp',value, precision=1)
+        boiler_temp = self.get_value(instrument,75,1,True)
+#	# Verifie si le bit le plus haut est mis => valeur negative
+#	if(int(boiler_temp) & int('1000000000000000',2) == 32768):
+#		value=(int(boiler_temp) & int('0111111111111111',2))/-10.0
+#	else:
+#		value=boiler_temp/10.0
+	if boiler_temp is not None:
+		self.publish('boiler_temp',boiler_temp, precision=1)
 
 	##########
 	# 307 => fan speed / 0 => 10000 / Increment 1 / rev/min
-	fan_speed = self.get_value(307)
+	fan_speed = self.get_value(instrument,307,0,False)
 	if fan_speed is not None:	
 		self.publish('fan_speed',fan_speed)
 
 	##########
 	# 437 => water pressure / 0 => 100 / Increment 1 / 0.1 Bar
-	water_pressure = self.get_value(437)
+	water_pressure = self.get_value(instrument,437,1,False)
 	if water_pressure is not None:	
-		self.publish('water_pressure',water_pressure/10.0, precision=1)
-
-	##########
-	# 622 => system temperature / 0 => 1500 / Increment 1 / 0.1 deg C
-	system_temp = self.get_value(622)
-	if system_temp is not None:	
-		self.publish('system_temp',system_temp/10.0, precision=1)
+		self.publish('water_pressure',water_pressure, precision=1)
 
 	##########
 	# 607 => boiler return temperature / 0 => 1500 / Increment 1 / 0.1 deg C
-	boiler_return_temp = self.get_value(607)
+	boiler_return_temp = self.get_value(instrument,607,1,False)
 	if boiler_return_temp is not None:	
-		self.publish('boiler_return_temp',boiler_return_temp/10.0, precision=1)
+		self.publish('boiler_return_temp',boiler_return_temp, precision=1)
 
         return None
