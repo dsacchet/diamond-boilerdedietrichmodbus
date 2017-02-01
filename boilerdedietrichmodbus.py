@@ -102,14 +102,14 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 
 	##########
 	# 7 => outdoor sensor / -500 => 1500 / Increment 1 / Units 0.1 deg C
-	outdoor_sensor = self.get_value(instrument,7,1,True)
+	outdoor_sensor = self.get_value(instrument,7,0,False)
 	if outdoor_sensor is not None:	
-#		# Verifie si le bit le plus haut est mis => valeur negative
-#		if(int(outdoor_sensor) & int('1000000000000000',2) == 32768):
-#			value=(int(outdoor_sensor) & int('0111111111111111',2))/-10.0
-#		else:
-#			value=outdoor_sensor/10.0
-		self.publish('outdoor_sensor',outdoor_sensor, precision=1)
+		# Verifie si le bit le plus haut est mis => valeur negative
+		if(int(outdoor_sensor) & int('1000000000000000',2) == 32768):
+			value=(int(outdoor_sensor) & int('0111111111111111',2))/-10.0
+		else:
+			value=outdoor_sensor/10.0
+		self.publish('outdoor_sensor',value, precision=1)
 
 	##########
 	# 18 => room temperature circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
@@ -157,6 +157,23 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 	water_pressure = self.get_value(instrument,437,1,False)
 	if water_pressure is not None:	
 		self.publish('water_pressure',water_pressure, precision=1)
+
+	##########
+	# 467 => temperature panneau solaire / 0 => 100 / Increment 1 / 0.1 Bar
+	solar_pannel_temp = self.get_value(instrument,467,0,False)
+	if solar_pannel_temp is not None:	
+		# Verifie si le bit le plus haut est mis => valeur negative
+		if(int(solar_pannel_temp) & int('1000000000000000',2) == 32768):
+			value=(int(solar_pannel_temp) & int('0111111111111111',2))/-10.0
+		else:
+			value=solar_pannel_temp/10.0
+		self.publish('solar_pannel_temp',value, precision=1)
+
+	##########
+	# 468 => temperature ballon solaire / 0 => 100 / Increment 1 / 0.1 Bar
+	solar_tank_temp = self.get_value(instrument,468,1,False)
+	if solar_tank_temp is not None:	
+		self.publish('solar_tank_temp',solar_tank_temp, precision=1)
 
 	##########
 	# 607 => boiler return temperature / 0 => 1500 / Increment 1 / 0.1 deg C
