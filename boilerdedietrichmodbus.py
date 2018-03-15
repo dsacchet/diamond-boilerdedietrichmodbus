@@ -159,6 +159,12 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 		self.publish('water_pressure',water_pressure, precision=1)
 
 	##########
+	# 465 => failure code
+	failure_code = self.get_value(instrument,465,0,False)
+	if failure_code is not None:	
+		self.publish('failure_code',failure_code, precision=0)
+
+	##########
 	# 467 => temperature panneau solaire / 0 => 100 / Increment 1 / 0.1 Bar
 	solar_pannel_temp = self.get_value(instrument,467,0,False)
 	if solar_pannel_temp is not None:	
@@ -174,6 +180,12 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 	solar_tank_temp = self.get_value(instrument,468,1,False)
 	if solar_tank_temp is not None:	
 		self.publish('solar_tank_temp',solar_tank_temp, precision=1)
+
+	##########
+	# 500 => Alarme active ou non / 0 = False / 1 = True
+	alarm = self.get_value(instrument,500,0,False)
+	if alarm is not None:	
+		self.publish('alarm',alarm, precision=0)
 
 	##########
 	# 607 => boiler return temperature / 0 => 1500 / Increment 1 / 0.1 deg C
