@@ -112,6 +112,24 @@ class BoilerDeDietrichModbusCollector(diamond.collector.Collector):
 		self.publish('outdoor_sensor',value, precision=1)
 
 	##########
+	# 14 => temperature jour set day circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
+	room_temp_day_a = self.get_value(instrument,14,1,False)
+	if room_temp_day_a is not None:	
+		self.publish('room_temp_a',room_temp_day_a, precision=1)
+
+	##########
+	# 15 => room temperature set night circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
+	room_temp_night_a = self.get_value(instrument,15,1,False)
+	if room_temp_night_a is not None:	
+		self.publish('room_temp_a',room_temp_night_a, precision=1)
+
+	##########
+	# 16 => room temperature set antifrost circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
+	room_temp_antifrost_a = self.get_value(instrument,16,1,False)
+	if room_temp_antifrost_a is not None:	
+		self.publish('room_temp_a',room_temp_antifrost_a, precision=1)
+
+	##########
 	# 18 => room temperature circuit A / 0 => 400 / Increment 1 / Units 0.1 deg C
 	room_temp_a = self.get_value(instrument,18,1,False)
 	if room_temp_a is not None:	
